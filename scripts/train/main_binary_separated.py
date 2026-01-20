@@ -1,20 +1,25 @@
-from libs.seed import set_seed, seed_worker
+import os
+import sys
 
-g = set_seed(0)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 import utils as utils
 import pandas as pd
 from torch.utils.data import DataLoader
 from datetime import datetime
 import os
-
 import argparse
+
+g = utils.set_seed(0)
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="このプログラムの説明（なくてもよい）")
     parser.add_argument("--testname")
     parser.add_argument("--timestamp")
+    parser.add_argument("--muscle", type=int)
     parser.add_argument("--model")
     parser.add_argument("--criterion")
     parser.add_argument("--optimizer")
@@ -30,6 +35,7 @@ def parse_args():
     configs = {
         "testname": args.testname,
         "timestamp": args.timestamp,
+        "muscle": [args.muscle],
         "model": [args.model],
         "criterion": [args.criterion],
         "optimizer": [args.optimizer],
@@ -140,71 +146,68 @@ standardized_parameter = {
 
 def main():
     df = pd.read_excel(MEP_EXCEL_PATH)
-    for muscle in range(6):
-        dataset = utils.Standardized_Dataset(EFIELD_PATH, df, muscle)
-        configs_name, configs = utils.get_config(PARAMETER_PATH, arg_configs)
+    muscle = arg_configs["muscle"][0]
 
-        for i, config in enumerate(configs):
-            for valname in [
-                "Aoki",
-                "Kinugasa",
-                "Masuda",
-                "Takase",
-                "Yatsuda",
-                "Soma",
-                "Teragiwa",
-            ]:
-                if TESTNAME == valname:
-                    continue
-                save_dir = f"{S}/muscle{muscle}/{TIMESTAMP}_{MEMO}/config{i}/{valname}"
-                print(save_dir)
-                os.makedirs(save_dir, exist_ok=True)
-                utils.save_config(
-                    f"{S}/muscle{muscle}/{TIMESTAMP}_{MEMO}/config{i}",
-                    configs_name[i],
-                )
-                train_dataset, val_dataset, test_dataset = utils.Split_dataset_test_val(
-                    dataset, valname, TESTNAME
-                )
+    dataset = utils.Standardized_Dataset(EFIELD_PATH, df, muscle)
+    configs_name, configs = utils.get_config(PARAMETER_PATH, arg_configs)
+    for i, config in enumerate(configs):
+        for valname in [
+            "Aoki",
+            "Kinugasa",
+            "Masuda",
+            "Takase",
+            "Yatsuda",
+            "Soma",
+            "Teragiwa",
+        ]:
+            if TESTNAME == valname:
+                continue
+            save_dir = f"{S}/muscle{muscle}/{TIMESTAMP}_{MEMO}/config{i}/{valname}"
+            print(save_dir)
+            os.makedirs(save_dir, exist_ok=True)
+            utils.save_config(
+                f"{S}/muscle{muscle}/{TIMESTAMP}_{MEMO}/config{i}",
+                configs_name[i],
+            )
+            train_dataset, val_dataset, test_dataset = utils.Split_dataset_test_val(
+                dataset, valname, TESTNAME
+            )
 
-                dataset.set_standardize_param(
-                    mu=standardized_parameter[TESTNAME][valname][0],
-                    sigma=standardized_parameter[TESTNAME][valname][1],
-                )
+            dataset.set_standardize_param(
+                mu=standardized_parameter[TESTNAME][valname][0],
+                sigma=standardized_parameter[TESTNAME][valname][1],
+            )
 
-                train_dataloader = DataLoader(
-                    train_dataset,
-                    batch_size=config["batchsize"],
-                    num_workers=8,
-                    shuffle=True,
-                    pin_memory=True,
-                    worker_init_fn=seed_worker,
-                    persistent_workers=True,
-                    generator=g,
-                )
-                val_dataloader = DataLoader(
-                    val_dataset,
-                    batch_size=1,
-                    shuffle=False,
-                    worker_init_fn=seed_worker,
-                    generator=g,
-                )
+            train_dataloader = DataLoader(
+                train_dataset,
+                batch_size=config["batchsize"],
+                num_workers=8,
+                shuffle=True,
+                pin_memory=True,
+                worker_init_fn=utils.seed_worker,
+                persistent_workers=True,
+                generator=g,
+            )
+            val_dataloader = DataLoader(
+                val_dataset,
+                batch_size=1,
+                shuffle=False,
+                worker_init_fn=utils.seed_worker,
+                generator=g,
+            )
 
-                trainer = utils.Trainer(
-                    config["model"],
-                    config["criterion"],
-                    config["optimizer"],
-                    patience=20,
-                )
+            trainer = utils.Trainer(
+                config["model"],
+                config["criterion"],
+                config["optimizer"],
+                patience=20,
+            )
 
-                history, bestModel, bestLoss, bestResult = trainer.train(
-                    train_dataloader, val_dataloader, config["epochs"]
-                )
+            history, bestModel, bestLoss, bestResult = trainer.train(
+                train_dataloader, val_dataloader, config["epochs"]
+            )
 
-                utils.save_training_logs(
-                    save_dir, history, bestModel, bestLoss, bestResult
-                )
-        exit()
+            utils.save_training_logs(save_dir, history, bestModel, bestLoss, bestResult)
 
 
 if __name__ == "__main__":

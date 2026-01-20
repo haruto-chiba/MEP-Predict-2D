@@ -10,3 +10,4 @@ from libs.trainer import Trainer
 from libs.tester import Tester
 from libs.config import get_config, load_yaml
 from libs.model import *
+from libs.seed import *
