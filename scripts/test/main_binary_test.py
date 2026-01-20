@@ -1,12 +1,14 @@
-from libs.seed import set_seed, seed_worker
+import os
+import sys
 
-g = set_seed(0)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-import utils
+import utils as utils
 import pandas as pd
 import glob
 from natsort import natsorted
-import os
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -14,18 +16,22 @@ import warnings
 import torch.nn as nn
 import argparse
 
-MODE = "RANDOM"
+g = utils.set_seed(0)
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="このプログラムの説明（なくてもよい）")
     parser.add_argument("--testname")
+    parser.add_argument("--muscle", type=int)
+    parser.add_argument("--mode")
     parser.add_argument("--foldername")
 
     args = parser.parse_args()
 
     configs = {
         "testname": args.testname,
+        "muscle": args.muscle,
+        "mode": args.mode,
         "foldername": args.foldername,
     }
 
@@ -46,6 +52,8 @@ MODEL_LIST = [
     utils.ResNet152_3D,
 ]
 TESTNAME = arg_configs["testname"]
+MUSCLE = arg_configs["muscle"]
+MODE = arg_configs["mode"]
 FOLDERNAME = arg_configs["foldername"]
 
 S = f"../../../../../mnt/share/Takase/Result_DeepLearning2D/outputs_{TESTNAME}"
@@ -53,7 +61,6 @@ S = f"../../../../../mnt/share/Takase/Result_DeepLearning2D/outputs_{TESTNAME}"
 MEP_EXCEL_PATH = "data/MEPs/All_data_upper1000_binary.xlsx"
 EFIELD_PATH = "data/Efields_interpolated"
 
-MUSCLE = 0
 
 standardized_param_separated = {
     "Aoki": {
@@ -179,15 +186,13 @@ def save_output(outputDir, history):
     return
 
 
-if MODE == "SEPARATED":
-    model_paths = glob.glob(f"{S}/muscle0/{FOLDERNAME}/*/*/*.pt")
-elif MODE == "RANDOM":
-    model_paths = glob.glob(f"{S}/muscle0/{FOLDERNAME}/*/*.pt")
+if MODE == "SEPARATED" or MODE == "separated":
+    model_paths = glob.glob(f"{S}/muscle{MUSCLE}/{FOLDERNAME}/*/*/*.pt")
+elif MODE == "RANDOM" or MODE == "random":
+    model_paths = glob.glob(f"{S}/muscle0{MUSCLE}/{FOLDERNAME}/*/*.pt")
+else:
+    raise RuntimeError(f"modeが間違っています: {MODE}")
 model_paths = natsorted(model_paths)
-
-print(f"{S}/muscle0/{FOLDERNAME}/*/*/*.pt")
-print(modelpath_to_outputfolderpath(model_paths[0]))
-print(f"modelpath length: {len(model_paths)}")
 
 
 def main():
@@ -200,13 +205,13 @@ def main():
         output_folder = modelpath_to_outputfolderpath(modelpath)
         model = load_model(modelpath, MODEL_LIST)
 
-        if MODE == "SEPARATED":
+        if MODE == "SEPARATED" or MODE == "separated":
             valname = modelpath.split("/")[-2]
             dataset.set_standardize_param(
                 mu=standardized_param_separated[TESTNAME][valname][0],
                 sigma=standardized_param_separated[TESTNAME][valname][1],
             )
-        elif MODE == "RANDOM":
+        elif MODE == "RANDOM" or MODE == "random":
             dataset.set_standardize_param(
                 mu=standardize_param_random[TESTNAME][0],
                 sigma=standardize_param_random[TESTNAME][1],
@@ -216,7 +221,7 @@ def main():
             test_dataset,
             batch_size=1,
             shuffle=False,
-            worker_init_fn=seed_worker,
+            worker_init_fn=utils.seed_worker,
             generator=g,
         )
 
